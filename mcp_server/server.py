@@ -142,6 +142,61 @@ Forecast: {p['detailedForecast']}
 
 @tool
 async def slow_count(n: int, session_id: Optional[str] = None) -> dict:
+    assert session_id, "slow_count requires a session_id"
+    token = f"slow_count/{session_id}"
+
+    async def _runner():
+        for i in range(1, n + 1):
+            # progress event (Inspector shows progress bar if recognized)
+            progress_msg = sse_event(
+                {
+                    "jsonrpc": JSONRPC,
+                    "method": "notifications/progress",
+                    "params": {"progressToken": token, "progress": i / n},
+                }
+            )
+            await SESSIONS.publish(session_id, progress_msg)
+
+            # custom notification (will show in Server Notifications panel)
+            notify_msg = sse_event(
+                {
+                    "jsonrpc": JSONRPC,
+                    "method": "slow_count/notification",
+                    "params": {"step": i, "of": n, "status": "in-progress"},
+                }
+            )
+            await SESSIONS.publish(session_id, notify_msg)
+
+            await asyncio.sleep(1)
+
+        # final “done” progress
+        done_msg = sse_event(
+            {
+                "jsonrpc": JSONRPC,
+                "method": "notifications/progress",
+                "params": {"progressToken": token, "progress": 1.0},
+            }
+        )
+        await SESSIONS.publish(session_id, done_msg)
+
+        # final custom notification
+        final_notify = sse_event(
+            {
+                "jsonrpc": JSONRPC,
+                "method": "slow_count/notification",
+                "params": {"status": "done"},
+            }
+        )
+        await SESSIONS.publish(session_id, final_notify)
+
+    asyncio.create_task(_runner())
+    return {
+        "content": [{"type": "text", "text": f"Started slow_count({n}), token={token}"}]
+    }
+
+
+#@tool
+async def slow_count1(n: int, session_id: Optional[str] = None) -> dict:
     """
     Counts to n and streams MCP progress notifications to the session SSE channel.
     """
@@ -250,12 +305,12 @@ async def mcp_post(req: Request, tasks: BackgroundTasks):
         case "initialize":
             result = {
                 "protocolVersion": "2025-03-26",
-                "capabilities": {"listTools": True, "toolCalling": True, "sse": True},
                 "serverInfo": {"name": "fastapi-mcp", "version": "0.1"},
+                "capabilities": {"tools": {"listChanged": True, "callTool": True}}, #{"listTools": True, "toolCalling": True, "sse": True},
             }
 
         case "ping" | "$/ping":
-            result = {"pong": True}
+            result = {} #{"pong": True}
 
         case "workspace/listTools" | "$/listTools" | "list_tools" | "tools/list":
             result = {"tools": REGISTERED_TOOLS}
