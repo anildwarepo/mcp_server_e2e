@@ -1,0 +1,12 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx[socks,http2]
+requests
+sseclient-py
+azure-cosmos
+azure-identity
+python-dotenv
+aiohttp
+dapr-ext-fastapi
+isodate
+aiohttp
